@@ -720,15 +720,28 @@
 
     function handleScannedData(data) {
       try {
-        const url = new URL(data);
-        const params = new URLSearchParams(url.search);
-        const sharedData = params.get('data');
-        if (sharedData) {
-          const decoded = JSON.parse(atob(decodeURIComponent(sharedData)));
+        // Format 1: SHOPLIST:<base64> — embedded data (works offline/file://)
+        if (data.startsWith('SHOPLIST:')) {
+          const encoded = data.slice(9);
+          const decoded = JSON.parse(decodeURIComponent(escape(atob(encoded))));
           closeScanner();
           importList(decoded);
-        } else { showToast('Invalid QR code'); }
-      } catch(e) { showToast('Invalid QR code'); }
+          return;
+        }
+        // Format 2: URL with ?data= param (legacy / hosted)
+        const url = new URL(data);
+        const sharedData = url.searchParams.get('data');
+        if (sharedData) {
+          const decoded = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(sharedData)))));
+          closeScanner();
+          importList(decoded);
+          return;
+        }
+        showToast('QR no reconocido — usa "Pegar manualmente"');
+      } catch(e) {
+        console.error('QR parse error:', e);
+        showToast('QR no válido');
+      }
     }
 
     /* ========= INIT ========= */
@@ -1027,7 +1040,9 @@
         name:i.name,quantity:i.quantity,unit:i.unit,price:i.price,
         store:i.store,location:i.location,category:i.category,notes:i.notes
       }))};
-      return `${location.origin}${location.pathname}?data=${encodeURIComponent(btoa(JSON.stringify(data)))}`;
+      const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+      // Use a recognizable prefix so the scanner can detect it without needing a real URL
+      return `SHOPLIST:${encoded}`;
     }
 
     function setShareTab(tab, event) {
@@ -1073,12 +1088,16 @@
       const input=document.getElementById('manualQRData').value.trim();
       if (!input) { showToast('Please paste the QR code data'); return; }
       try {
+        if (input.startsWith('SHOPLIST:')) {
+          const encoded = input.slice(9);
+          closeScanner(); importList(JSON.parse(decodeURIComponent(escape(atob(encoded))))); return;
+        }
         if (input.includes('?data=')) {
           const url=new URL(input);
           const sharedData=url.searchParams.get('data');
-          if (sharedData) { closeScanner(); importList(JSON.parse(atob(decodeURIComponent(sharedData)))); return; }
+          if (sharedData) { closeScanner(); importList(JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(sharedData)))))); return; }
         }
-        try { closeScanner(); importList(JSON.parse(atob(input))); return; } catch(e){}
+        try { closeScanner(); importList(JSON.parse(decodeURIComponent(escape(atob(input))))); return; } catch(e){}
         showToast('Invalid QR code data');
       } catch(e) { showToast('Could not import. Paste the complete URL or encoded data'); }
     }
