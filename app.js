@@ -17,11 +17,10 @@ function initMap() {
 
     map.on('click', (e) => setPosition(e.latlng.lat, e.latlng.lng));
 
-    // Centrar en ubicación actual al abrir
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
             pos => map.setView([pos.coords.latitude, pos.coords.longitude], 17),
-            () => console.log('Sin permiso ubicación'),
+            () => {},
             { enableHighAccuracy: true, timeout: 5000 }
         );
     }
@@ -30,7 +29,6 @@ function initMap() {
     updateUI();
 }
 
-// Selector de coche
 document.querySelectorAll('.car-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         document.querySelectorAll('.car-btn').forEach(b => b.classList.remove('active'));
@@ -76,7 +74,6 @@ function setPosition(lat, lng) {
     data.coords = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
     data.datetime = new Date().toLocaleString('es-ES');
 
-    // Actualizar marcador
     if (markers[currentCar]) map.removeLayer(markers[currentCar]);
     
     markers[currentCar] = L.marker([lat, lng], {
@@ -97,7 +94,6 @@ function setPosition(lat, lng) {
     map.setView([lat, lng], 18);
     updateUI();
 
-    // Dirección
     fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=es`)
         .then(r => r.json())
         .then(d => {
@@ -113,7 +109,6 @@ function setPosition(lat, lng) {
     saveAllData();
 }
 
-// Guardar ubicación actual
 document.getElementById('locateBtn').addEventListener('click', () => {
     const btn = document.getElementById('locateBtn');
     btn.textContent = '📡 Buscando...';
@@ -134,14 +129,12 @@ document.getElementById('locateBtn').addEventListener('click', () => {
     );
 });
 
-// Navegar
 document.getElementById('navigateBtn').addEventListener('click', () => {
     const pos = carsData[currentCar].position;
     if (!pos) return;
     window.open(`https://www.google.com/maps/dir/?api=1&destination=${pos.lat},${pos.lng}&travelmode=walking`, '_blank');
 });
 
-// Compartir
 document.getElementById('shareBtn').addEventListener('click', () => {
     const data = carsData[currentCar];
     if (!data.position) return;
@@ -170,7 +163,7 @@ document.querySelector('.close-share').addEventListener('click', () => {
     document.getElementById('shareModal').classList.remove('active');
 });
 
-// Foto
+// FOTO CON COMPRESIÓN
 const cameraInput = document.getElementById('cameraInput');
 document.getElementById('takePhotoBtn').onclick = () => cameraInput.click();
 document.getElementById('photoContainer').onclick = () => {
@@ -180,16 +173,60 @@ document.getElementById('photoContainer').onclick = () => {
 cameraInput.addEventListener('change', e => {
     const file = e.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-        carsData[currentCar].photo = ev.target.result;
+    
+    // Mostrar cargando
+    document.getElementById('photoPlaceholder').innerHTML = '<span>⏳</span><p>Procesando...</p>';
+    
+    compressImage(file, 1280, 0.75).then(dataUrl => {
+        // Borra automáticamente la anterior al asignar la nueva
+        carsData[currentCar].photo = dataUrl;
         updateUI();
-        saveAllData();
-    };
-    reader.readAsDataURL(file);
+        const ok = saveAllData();
+        if (!ok) {
+            alert('La foto es demasiado grande. Se ha guardado una versión comprimida.');
+        }
+    }).catch(err => {
+        alert('Error al procesar foto');
+        console.error(err);
+        updateUI();
+    });
 });
 
-// Ver foto
+// Función para comprimir imagen
+function compressImage(file, maxSize = 1280, quality = 0.75) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        const reader = new FileReader();
+        
+        reader.onload = e => {
+            img.onload = () => {
+                let { width, height } = img;
+                if (width > height && width > maxSize) {
+                    height = Math.round(height * maxSize / width);
+                    width = maxSize;
+                } else if (height > maxSize) {
+                    width = Math.round(width * maxSize / height);
+                    height = maxSize;
+                }
+                
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // JPEG comprime mucho mejor que PNG
+                const dataUrl = canvas.toDataURL('image/jpeg', quality);
+                resolve(dataUrl);
+            };
+            img.onerror = reject;
+            img.src = e.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
 const viewBtn = document.getElementById('viewPhotoBtn');
 viewBtn.onclick = () => openPhoto();
 document.getElementById('photoPreview').onclick = () => openPhoto();
@@ -205,7 +242,6 @@ document.querySelector('#photoModal .close').onclick = () => {
     document.getElementById('photoModal').classList.remove('active');
 };
 
-// Zoom foto (igual que antes)
 let scale=1, lastScale=1, posX=0, posY=0, lastX=0, lastY=0;
 const modalImg = document.getElementById('modalImage');
 function resetZoom(){ scale=1; lastScale=1; posX=0; posY=0; updateTransform(); }
@@ -222,17 +258,17 @@ modalImg.addEventListener('touchmove', e => {
 });
 modalImg.addEventListener('touchend', () => lastScale=scale);
 
-// Notas y guardar
 document.getElementById('notes').addEventListener('input', e => {
     carsData[currentCar].notes = e.target.value;
     saveAllData();
 });
 document.getElementById('saveBtn').onclick = () => {
-    saveAllData();
-    const b=document.getElementById('saveBtn'); b.textContent='✓ Guardado'; setTimeout(()=>b.textContent='💾 Guardar',1200);
+    const ok = saveAllData();
+    const b=document.getElementById('saveBtn');
+    b.textContent = ok ? '✓ Guardado' : '⚠️ Error';
+    setTimeout(()=>b.textContent='💾 Guardar',1200);
 };
 
-// Borrar
 document.getElementById('clearBtn').onclick = () => {
     if(!confirm(`¿Borrar ${carsData[currentCar].name}?`)) return;
     if(markers[currentCar]){ map.removeLayer(markers[currentCar]); delete markers[currentCar]; }
@@ -241,7 +277,6 @@ document.getElementById('clearBtn').onclick = () => {
     saveAllData();
 };
 
-// Ver ambos
 document.getElementById('showBothBtn').onclick = () => {
     const bounds = [];
     Object.values(markers).forEach(m => bounds.push(m.getLatLng()));
@@ -250,24 +285,40 @@ document.getElementById('showBothBtn').onclick = () => {
     else { map.fitBounds(bounds, {padding:[50,50]}); }
 };
 
-// Guardar/cargar
-function saveAllData(){ localStorage.setItem('dosCoches', JSON.stringify(carsData)); }
+function saveAllData(){
+    try {
+        localStorage.setItem('dosCoches', JSON.stringify(carsData));
+        return true;
+    } catch(e) {
+        console.error('Error guardando:', e);
+        // Si falla por espacio, intenta guardar sin fotos
+        try {
+            const backup = JSON.parse(JSON.stringify(carsData));
+            backup.kia.photo = null;
+            backup.nissan.photo = null;
+            localStorage.setItem('dosCoches', JSON.stringify(backup));
+            alert('Espacio lleno. Se guardó ubicación pero no la foto. Prueba con foto más pequeña.');
+        } catch(e2) {}
+        return false;
+    }
+}
+
 function loadAllData(){
     const saved = localStorage.getItem('dosCoches');
     if(!saved) return;
     try {
         const parsed = JSON.parse(saved);
         carsData = { ...carsData, ...parsed };
-        // Recrear marcadores
         Object.entries(carsData).forEach(([key, data]) => {
             if(data.position){
                 const pos = data.position;
                 markers[key] = L.marker([pos.lat, pos.lng], {
                     icon: L.divIcon({ html: data.icon, className: 'car-marker', iconSize:[40,40], iconAnchor:[20,20] })
-                }).addTo(map).bindPopup(`<b>${data.name}</b><br>${data.address.split(',')[0]||''}`);
+                }).addTo(map).bindPopup(`<b>${data.name}</b><br>${(data.address||'').split(',')[0]||''}`);
             }
         });
     } catch(e){ console.error(e); }
 }
 
 window.addEventListener('load', initMap);
+    
