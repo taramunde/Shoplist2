@@ -195,19 +195,13 @@ body {
 
 .articulo {
   display: grid;
-  grid-template-columns: auto 1fr auto auto auto;
+  grid-template-columns: 1fr auto auto auto;
   align-items: center;
   gap: 0.55rem;
   background: #fff;
   border: 1.5px solid var(--linea);
   border-radius: 10px;
   padding: 0.55rem 0.65rem;
-}
-
-.articulo__check {
-  width: 1.2rem;
-  height: 1.2rem;
-  accent-color: var(--verde-puesto);
 }
 
 .articulo__nombre {
