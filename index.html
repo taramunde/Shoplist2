@@ -1,194 +1,47 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Lista de la compra departamentada - comparte por enlace, WhatsApp o QR">
-    <title>🛒 Lista de la Compra</title>
-
-    <!-- Tailwind CSS (CDN) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- LZ-String: comprime y hace URL-safe el JSON (soporta tildes/ñ) -->
-    <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
-
-    <!-- CSS propio -->
-    <link rel="stylesheet" href="css/styles.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lista de la compra</title>
+<meta name="description" content="Lista de la compra que se puede enviar por WhatsApp y abrir desde el enlace.">
+<link rel="stylesheet" href="css/style.css">
 </head>
-<body class="bg-zinc-950 text-white min-h-screen">
+<body>
 
-    <!-- ============================================================
-         🎯 SAFELIST TAILWIND — NO BORRAR
-         ============================================================
-         Tailwind Play CDN NO lee archivos .js externos. Las clases que
-         genera js/app.js dinámicamente no se detectan en el escaneo
-         inicial, y por eso el contenido dinámico aparece sin estilos.
-         Este div oculto contiene TODAS esas clases para forzar su
-         generación. Si añades nuevas clases desde app.js, añádelas
-         también aquí.
-         ============================================================ -->
-    <div style="display:none" aria-hidden="true"
-         class="bg-zinc-900 rounded-3xl overflow-hidden border border-zinc-800
-                px-5 py-4 bg-zinc-800/60 hover:bg-zinc-800
-                flex items-center justify-between gap-3 gap-x-3 flex-wrap
-                text-xl font-medium text-[11px] bg-white/10 px-2 py-0.5 rounded-full
-                text-emerald-400 text-sm text-zinc-400
-                py-3 border-b last:border-b-0 group
-                w-5 h-5 accent-emerald-500 cursor-pointer shrink-0
-                flex-1 min-w-0 gap-x-2 truncate
-                text-red-400 hover:text-red-300 text-lg opacity-50 hover:opacity-100
-                text-emerald-300 bg-emerald-500/15 border-emerald-500/20"></div>
+<header class="cabecera">
+  <div class="cabecera__fila">
+    <h1 class="cabecera__titulo">La lista</h1>
+    <span class="cabecera__progreso" id="progreso"></span>
+  </div>
+</header>
 
-    <!-- AVISO LOCAL -->
-    <div id="local-warning" class="hidden bg-amber-500/20 border-b border-amber-500/30 text-amber-200 text-xs px-4 py-3 text-center">
-        ⚠️ <b>Estás abriendo el archivo localmente.</b> El enlace de compartir no funcionará en otros dispositivos.<br>
-        Para que el enlace sea clicable, sube este archivo a
-        <a href="https://app.netlify.com/drop" target="_blank" class="underline font-bold">Netlify Drop</a>
-        o usa la opción <b>"Texto"</b> al compartir.
-    </div>
+<main class="contenido">
 
-    <!-- HEADER -->
-    <header class="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-40">
-        <div class="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between gap-2 flex-wrap">
-            <div class="flex items-center gap-x-3">
-                <div class="w-10 h-10 bg-emerald-500 rounded-2xl flex items-center justify-center text-2xl shadow-lg shadow-emerald-500/20">🛒</div>
-                <div>
-                    <h1 class="text-xl font-semibold leading-tight">Lista de la Compra</h1>
-                    <p class="text-emerald-400 text-xs">Departamentada</p>
-                </div>
-            </div>
-            <div class="flex items-center gap-x-2">
-                <button id="btn-nueva" title="Nueva lista"
-                        class="bg-zinc-800 hover:bg-zinc-700 px-3 h-10 rounded-2xl text-sm font-medium border border-zinc-700">
-                    ✚ <span class="hidden sm:inline">Nueva</span>
-                </button>
-                <button id="btn-compartir"
-                        class="bg-emerald-600 hover:bg-emerald-500 px-4 h-10 rounded-2xl text-sm font-semibold shadow-lg shadow-emerald-500/30">
-                    🔗 <span class="hidden sm:inline">Compartir</span>
-                </button>
-                <button id="btn-limpiar" title="Limpiar comprados"
-                        class="bg-zinc-800 hover:bg-zinc-700 px-3 h-10 rounded-2xl text-sm border border-zinc-700">🧹</button>
-                <button id="btn-stats"
-                        class="bg-zinc-800 text-emerald-400 text-sm font-medium px-3 h-10 rounded-3xl border border-zinc-700">
-                    <span id="contador-text">0 / 0</span>
-                </button>
-            </div>
-        </div>
-    </header>
+  <form class="buscador" id="form-añadir" autocomplete="off">
+    <input type="text" id="buscar" placeholder="Añadir producto..." aria-label="Buscar o añadir producto">
+    <button type="submit" class="buscador__boton">Añadir</button>
+    <ul class="sugerencias" id="sugerencias" hidden></ul>
+  </form>
 
-    <main class="max-w-4xl mx-auto px-4 py-6">
+  <p class="estado-vacio" id="estado-vacio">
+    La lista está vacía. Busca un producto arriba para empezar, por ejemplo «tomates» o «leche».
+  </p>
 
-        <!-- FORMULARIO -->
-        <section class="bg-zinc-900 rounded-3xl p-5 shadow-xl border border-zinc-800 mb-6">
-            <div class="flex flex-col lg:flex-row gap-3">
-                <div class="flex-1 min-w-0">
-                    <label for="producto-input" class="block text-zinc-400 text-xs font-medium mb-1 ml-1">Producto</label>
-                    <input id="producto-input" type="text" autocomplete="off"
-                           placeholder="Ej: Leche entera, plátanos, detergente..."
-                           class="w-full bg-zinc-800 text-white placeholder:text-zinc-500 rounded-2xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-emerald-500 border border-transparent">
-                </div>
-                <div class="lg:w-24">
-                    <label for="cantidad-input" class="block text-zinc-400 text-xs font-medium mb-1 ml-1">Cantidad</label>
-                    <input id="cantidad-input" type="number" inputmode="decimal" min="0" step="any" autocomplete="off"
-                           placeholder="1"
-                           class="w-full bg-zinc-800 text-white placeholder:text-zinc-500 rounded-2xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-emerald-500 border border-transparent">
-                </div>
-                <div class="lg:w-40">
-                    <label for="unidad-select" class="block text-zinc-400 text-xs font-medium mb-1 ml-1">Unidad</label>
-                    <select id="unidad-select"
-                            class="w-full bg-zinc-800 text-white rounded-2xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-emerald-500 border border-transparent"></select>
-                </div>
-                <div class="lg:w-52">
-                    <label for="departamento-select" class="block text-zinc-400 text-xs font-medium mb-1 ml-1">Departamento</label>
-                    <select id="departamento-select"
-                            class="w-full bg-zinc-800 text-white rounded-2xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-emerald-500 border border-transparent"></select>
-                </div>
-                <div class="flex items-end">
-                    <button id="btn-agregar"
-                            class="bg-emerald-500 hover:bg-emerald-600 w-full lg:w-auto h-12 px-6 rounded-2xl text-white font-semibold flex items-center justify-center gap-x-2 shadow-lg shadow-emerald-500/30">
-                        <span class="text-xl leading-none">+</span> AÑADIR
-                    </button>
-                </div>
-            </div>
-        </section>
+  <div id="lista"></div>
 
-        <!-- LISTA -->
-        <div class="mb-3 flex items-center justify-between">
-            <h2 class="text-lg font-semibold">Mi lista</h2>
-            <div class="text-zinc-400 text-sm"><span id="total-items"></span></div>
-        </div>
+</main>
 
-        <div id="lista-container" class="space-y-5"></div>
+<footer class="barra-acciones">
+  <button type="button" id="btn-vaciar" class="accion accion--secundaria" title="Vaciar lista">Vaciar</button>
+  <button type="button" id="btn-copiar" class="accion accion--secundaria" title="Copiar enlace">Copiar enlace</button>
+  <button type="button" id="btn-compartir" class="accion accion--principal">Compartir</button>
+</footer>
 
-        <!-- ESTADO VACÍO -->
-        <div id="empty-state" class="hidden py-16 text-center">
-            <div class="mx-auto w-20 h-20 bg-zinc-900 rounded-3xl flex items-center justify-center text-5xl mb-5">🛒</div>
-            <h3 class="text-2xl font-medium mb-2">Tu lista está vacía</h3>
-            <p class="text-zinc-400 max-w-xs mx-auto text-sm">Añade productos con su cantidad y compártela con quien quieras</p>
-            <button id="btn-empezar"
-                    class="mt-6 bg-white text-zinc-900 px-6 py-3 rounded-2xl font-semibold inline-flex items-center gap-x-2">
-                ✚ Empezar lista
-            </button>
-        </div>
-    </main>
+<div class="aviso" id="aviso"></div>
 
-    <!-- MODAL COMPARTIR -->
-    <div id="modal-compartir" class="hidden fixed inset-0 bg-black/70 items-center justify-center z-50 p-4">
-        <div class="modal bg-zinc-900 rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-zinc-800">
-            <h3 class="text-xl font-semibold mb-4 text-center">Comparte tu lista</h3>
-
-            <div class="bg-white/5 border border-white/10 rounded-2xl p-4 mb-5">
-                <div class="text-xs text-emerald-400 font-medium mb-2">Enlace de la lista:</div>
-                <div id="share-url"
-                     class="text-zinc-300 text-xs font-mono break-all bg-zinc-950 p-3 rounded-xl mb-3 max-h-24 overflow-y-auto"></div>
-
-                <div class="grid grid-cols-2 gap-2 mb-2">
-                    <button id="btn-copiar"
-                            class="flex flex-col items-center py-3 bg-white/5 hover:bg-white/10 rounded-2xl text-xs font-medium gap-y-1">
-                        <span class="text-lg">📋</span>Copiar Enlace
-                    </button>
-                    <button id="btn-whatsapp"
-                            class="flex flex-col items-center py-3 bg-white/5 hover:bg-white/10 rounded-2xl text-xs font-medium gap-y-1">
-                        <span class="text-lg">📱</span>Enviar Enlace
-                    </button>
-                </div>
-                <div class="grid grid-cols-2 gap-2">
-                    <button id="btn-qr"
-                            class="flex flex-col items-center py-3 bg-white/5 hover:bg-white/10 rounded-2xl text-xs font-medium gap-y-1">
-                        <span class="text-lg">📲</span>Ver QR
-                    </button>
-                    <button id="btn-texto"
-                            class="flex flex-col items-center py-3 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 rounded-2xl text-xs font-medium gap-y-1 border border-emerald-500/30">
-                        <span class="text-lg">📝</span>Compartir Texto
-                    </button>
-                </div>
-                <p class="text-[10px] text-zinc-500 text-center mt-3">
-                    💡 Si el enlace no funciona, usa "Compartir Texto" o sube el archivo a Netlify.
-                </p>
-            </div>
-
-            <div id="qr-preview" class="hidden flex-col items-center">
-                <div class="bg-white p-3 rounded-2xl mb-3">
-                    <img id="qr-image" alt="QR de la lista" class="w-56 h-56">
-                </div>
-                <p class="text-xs text-zinc-400 text-center">Escanea este código con tu móvil</p>
-            </div>
-
-            <div class="flex gap-x-2 mt-5">
-                <button id="btn-cerrar-1"
-                        class="flex-1 py-3 text-zinc-400 hover:text-white font-medium rounded-2xl">Cerrar</button>
-                <button id="btn-cerrar-2"
-                        class="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 font-semibold rounded-2xl">Listo</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- TOAST -->
-    <div id="toast"
-         class="hidden fixed bottom-5 left-1/2 -translate-x-1/2 bg-emerald-600 text-white text-sm font-medium px-5 py-3 rounded-2xl shadow-2xl z-[60]">
-        <span id="toast-text"></span>
-    </div>
-
-    <!-- JS propio -->
-    <script src="js/app.js"></script>
+<script src="js/products.js"></script>
+<script src="js/share.js"></script>
+<script src="js/app.js"></script>
 </body>
 </html>
