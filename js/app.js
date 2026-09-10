@@ -19,6 +19,33 @@ const DEPARTAMENTOS = [
     { nombre: "Otros",                   icono: "📦" }
 ];
 
+// Unidades disponibles (agrupadas mentalmente por tipo)
+const UNIDADES = [
+    { valor: "",             label: "— sin unidad —" },
+    // Peso
+    { valor: "g",            label: "gramos (g)" },
+    { valor: "kg",           label: "kilos (kg)" },
+    // Volumen
+    { valor: "ml",           label: "mililitros (ml)" },
+    { valor: "cl",           label: "centilitros (cl)" },
+    { valor: "l",            label: "litros (L)" },
+    // Recuento
+    { valor: "ud",           label: "unidades (ud)" },
+    { valor: "docena",       label: "docena" },
+    { valor: "media-docena", label: "media docena" },
+    // Envases y formatos
+    { valor: "brick",        label: "brick" },
+    { valor: "botella",      label: "botella" },
+    { valor: "lata",         label: "lata" },
+    { valor: "bote",         label: "bote" },
+    { valor: "tarro",        label: "tarro" },
+    { valor: "paquete",      label: "paquete" },
+    { valor: "bolsa",        label: "bolsa" },
+    { valor: "caja",         label: "caja" },
+    { valor: "bandeja",      label: "bandeja" },
+    { valor: "racion",       label: "ración" }
+];
+
 const STORAGE_KEY = 'listaCompra2026';
 
 // ============================================================
@@ -46,12 +73,32 @@ function iconoDepto(nombre) {
     return d ? d.icono : '📦';
 }
 
+// Devuelve "2 kg", "1 docena", "500", "" etc.
+function formatearCantidad(item) {
+    const cant = (item.cantidad !== undefined && item.cantidad !== null)
+        ? String(item.cantidad).trim() : '';
+    const uni  = (item.unidad || '').trim();
+    if (!cant && !uni) return '';
+    if (cant && !uni)  return cant;
+    if (!cant && uni)  return uni;
+    return `${cant} ${uni}`;
+}
+
 // ============================================================
 //  ENCODE / DECODE (URL-safe + UTF-8)
 // ============================================================
 function encodeLista(arr) {
-    // Formato compacto: [[nombre, departamento, comprado], ...]
-    const compacto = arr.map(i => [i.nombre, i.departamento, i.comprado ? 1 : 0]);
+    // Formato compacto variable:
+    //   [nombre, depto, comprado]                          (sin cantidad)
+    //   [nombre, depto, comprado, cantidad, unidad]        (con cantidad)
+    const compacto = arr.map(i => {
+        const cant = i.cantidad !== undefined && i.cantidad !== null ? String(i.cantidad) : '';
+        const uni  = i.unidad || '';
+        if (cant || uni) {
+            return [i.nombre, i.departamento, i.comprado ? 1 : 0, cant, uni];
+        }
+        return [i.nombre, i.departamento, i.comprado ? 1 : 0];
+    });
     const json = JSON.stringify(compacto);
     try {
         return LZString.compressToEncodedURIComponent(json);
@@ -72,11 +119,14 @@ function decodeLista(str) {
         if (!json) return null;
         const arr = JSON.parse(json);
         if (!Array.isArray(arr)) return null;
-        return arr.map(([nombre, departamento, comprado]) => ({
+
+        return arr.map(([nombre, departamento, comprado, cantidad, unidad]) => ({
             id: uid(),
             nombre: String(nombre),
             departamento: departamento || 'Otros',
-            comprado: !!comprado
+            comprado: !!comprado,
+            cantidad: cantidad || '',
+            unidad: unidad || ''
         }));
     } catch (e) {
         console.error('Error decodificando lista:', e);
@@ -185,16 +235,24 @@ function renderizarLista() {
                 </div>
             </div>
             <div class="departamento-body ${collapsed}">
-                ${items.map(item => `
+                ${items.map(item => {
+                    const cantTxt = formatearCantidad(item);
+                    const badge = cantTxt
+                        ? `<span class="text-[11px] text-emerald-300 bg-emerald-500/15 border border-emerald-500/20 px-2 py-0.5 rounded-full shrink-0 font-medium">${escapeHtml(cantTxt)}</span>`
+                        : '';
+                    return `
                     <div class="flex items-center gap-x-3 px-5 py-3 border-b border-zinc-800 last:border-b-0 group">
                         <input type="checkbox" ${item.comprado ? 'checked' : ''}
                                data-action="toggle" data-id="${item.id}"
                                class="w-5 h-5 accent-emerald-500 cursor-pointer shrink-0">
-                        <div class="flex-1 ${item.comprado ? 'item-comprado' : ''} truncate">${escapeHtml(item.nombre)}</div>
+                        <div class="flex-1 min-w-0 flex items-center gap-x-2 ${item.comprado ? 'item-comprado' : ''}">
+                            <span class="truncate">${escapeHtml(item.nombre)}</span>
+                            ${badge}
+                        </div>
                         <button data-action="delete" data-id="${item.id}" title="Eliminar"
                                 class="text-red-400 hover:text-red-300 text-lg px-2 opacity-50 hover:opacity-100">✕</button>
-                    </div>
-                `).join('')}
+                    </div>`;
+                }).join('')}
             </div>
         </div>`;
     }
@@ -214,7 +272,7 @@ function renderizarLista() {
         });
     });
 
-    // Delegación de eventos para checkbox y borrar
+    // Delegación de eventos
     container.querySelectorAll('[data-action="toggle"]').forEach(cb => {
         cb.addEventListener('change', () => marcarComprado(cb.dataset.id));
     });
@@ -237,19 +295,39 @@ function actualizarContador() {
 //  ACCIONES
 // ============================================================
 function agregarProducto() {
-    const input = document.getElementById('producto-input');
-    const select = document.getElementById('departamento-select');
-    const nombre = input.value.trim();
-    if (!nombre) { input.focus(); return; }
+    const inputNombre = document.getElementById('producto-input');
+    const inputCant   = document.getElementById('cantidad-input');
+    const selectUni   = document.getElementById('unidad-select');
+    const selectDepto = document.getElementById('departamento-select');
 
-    const departamento = select.value || 'Otros';
+    const nombre = inputNombre.value.trim();
+    if (!nombre) { inputNombre.focus(); return; }
 
-    lista.unshift({ id: uid(), nombre, departamento, comprado: false });
-    input.value = '';
-    input.focus();
+    const departamento = selectDepto.value || 'Otros';
+    const cantidadRaw  = inputCant.value.trim();
+    const cantidad     = cantidadRaw === '' ? '' : cantidadRaw;
+    const unidad       = selectUni.value || '';
+
+    lista.unshift({
+        id: uid(),
+        nombre,
+        departamento,
+        comprado: false,
+        cantidad,
+        unidad
+    });
+
+    // Reset form (mantenemos el departamento para añadir varios del mismo)
+    inputNombre.value = '';
+    inputCant.value = '';
+    selectUni.value = '';
+    inputNombre.focus();
+
     guardarLista();
     renderizarLista();
-    mostrarToast('✅ Añadido a ' + departamento);
+
+    const txt = formatearCantidad({ cantidad, unidad });
+    mostrarToast(`✅ ${nombre}${txt ? ' (' + txt + ')' : ''} → ${departamento}`);
 }
 
 function marcarComprado(id) {
@@ -364,7 +442,13 @@ function compartirComoTexto() {
     Object.keys(grupos).sort((a, b) => a.localeCompare(b, 'es')).forEach(depto => {
         texto += `*${depto}*\n`;
         grupos[depto].forEach(item => {
-            texto += `${item.comprado ? '✅' : '⬜'} ${item.nombre}\n`;
+            const cant = formatearCantidad(item);
+            const check = item.comprado ? '✅' : '⬜';
+            if (cant) {
+                texto += `${check} ${cant} · ${item.nombre}\n`;
+            } else {
+                texto += `${check} ${item.nombre}\n`;
+            }
         });
         texto += `\n`;
     });
@@ -394,12 +478,30 @@ function mostrarEstadisticas() {
         porDepto[i.departamento] = (porDepto[i.departamento] || 0) + 1;
     });
 
+    // Totales por unidad
+    const porUnidad = {};
+    lista.forEach(i => {
+        if (i.unidad) {
+            const key = i.unidad;
+            porUnidad[key] = (porUnidad[key] || 0) + (parseFloat(i.cantidad) || 0);
+        }
+    });
+
     let txt = '📊 ESTADÍSTICAS\n\n';
     txt += `Total: ${lista.length} productos\n`;
     txt += `Comprados: ${comprados} (${Math.round(comprados / lista.length * 100)}%)\n\n`;
     txt += 'Por departamento:\n';
     Object.keys(porDepto).sort((a, b) => a.localeCompare(b, 'es'))
         .forEach(d => { txt += `• ${d}: ${porDepto[d]}\n`; });
+
+    const unidadesKeys = Object.keys(porUnidad);
+    if (unidadesKeys.length > 0) {
+        txt += '\nTotales por unidad:\n';
+        unidadesKeys.sort().forEach(u => {
+            txt += `• ${porUnidad[u]} ${u}\n`;
+        });
+    }
+
     alert(txt);
 }
 
@@ -423,57 +525,26 @@ function inicializar() {
         document.getElementById('local-warning').classList.remove('hidden');
     }
 
+    // Rellenar select de unidades
+    const selectUni = document.getElementById('unidad-select');
+    UNIDADES.forEach(u => {
+        const opt = document.createElement('option');
+        opt.value = u.valor;
+        opt.textContent = u.label;
+        selectUni.appendChild(opt);
+    });
+
     // Rellenar select de departamentos
-    const select = document.getElementById('departamento-select');
+    const selectDepto = document.getElementById('departamento-select');
     DEPARTAMENTOS.forEach(d => {
         const opt = document.createElement('option');
         opt.value = d.nombre;
         opt.textContent = `${d.icono}  ${d.nombre}`;
-        select.appendChild(opt);
+        selectDepto.appendChild(opt);
     });
 
     // ---- Eventos ----
-    // Enter en input → añadir
+    // Enter en input nombre → añadir
     document.getElementById('producto-input').addEventListener('keydown', e => {
         if (e.key === 'Enter') agregarProducto();
-    });
-
-    // Botones cabecera
-    document.getElementById('btn-nueva').addEventListener('click', nuevaLista);
-    document.getElementById('btn-compartir').addEventListener('click', mostrarCompartir);
-    document.getElementById('btn-limpiar').addEventListener('click', limpiarComprados);
-    document.getElementById('btn-stats').addEventListener('click', mostrarEstadisticas);
-    document.getElementById('btn-agregar').addEventListener('click', agregarProducto);
-
-    // Botón "Empezar lista"
-    document.getElementById('btn-empezar').addEventListener('click', () => {
-        document.getElementById('producto-input').focus();
-    });
-
-    // Modal compartir
-    document.getElementById('btn-copiar').addEventListener('click', copiarEnlace);
-    document.getElementById('btn-whatsapp').addEventListener('click', compartirWhatsApp);
-    document.getElementById('btn-qr').addEventListener('click', generarQR);
-    document.getElementById('btn-texto').addEventListener('click', compartirComoTexto);
-    document.getElementById('btn-cerrar-1').addEventListener('click', cerrarModal);
-    document.getElementById('btn-cerrar-2').addEventListener('click', cerrarModal);
-
-    // Click fuera del modal
-    document.getElementById('modal-compartir').addEventListener('click', e => {
-        if (e.target.id === 'modal-compartir') cerrarModal();
-    });
-
-    // Escape cierra modal
-    document.addEventListener('keydown', e => {
-        if (e.key === 'Escape') cerrarModal();
-    });
-
-    // Cargar datos
-    cargarLista();
-    renderizarLista();
-
-    console.log('%c✅ Lista de la Compra lista', 'color:#10b981;font-weight:bold');
-}
-
-// Arrancar cuando el DOM esté preparado
-window.addEventListener('DOMContentLoaded', inicializar);
+    })
