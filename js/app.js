@@ -120,13 +120,6 @@ function render() {
       const li = document.createElement("li");
       li.className = "articulo" + (item.k ? " articulo--hecho" : "");
 
-      const check = document.createElement("input");
-      check.type = "checkbox";
-      check.className = "articulo__check";
-      check.checked = item.k;
-      check.setAttribute("aria-label", "Marcar " + item.n + " como comprado");
-      check.addEventListener("change", () => actualizarProducto(indice, { k: check.checked }));
-
       const nombre = document.createElement("span");
       nombre.className = "articulo__nombre";
       nombre.textContent = item.n;
@@ -155,11 +148,23 @@ function render() {
       const borrar = document.createElement("button");
       borrar.type = "button";
       borrar.className = "articulo__borrar";
-      borrar.setAttribute("aria-label", "Quitar " + item.n);
       borrar.textContent = "✕";
-      borrar.addEventListener("click", () => eliminarProducto(indice));
+      if (item.k) {
+        borrar.setAttribute("aria-label", "Quitar " + item.n + " de la lista");
+        borrar.addEventListener("click", () => eliminarProducto(indice));
+      } else {
+        borrar.setAttribute("aria-label", "Marcar " + item.n + " como comprado o quitarlo");
+        borrar.addEventListener("click", () => {
+          const yaComprado = confirm("¿Ya has comprado " + item.n + "?");
+          if (yaComprado) {
+            actualizarProducto(indice, { k: true });
+          } else {
+            eliminarProducto(indice);
+          }
+        });
+      }
 
-      li.append(check, nombre, cantidad, unidad, borrar);
+      li.append(nombre, cantidad, unidad, borrar);
       ul.appendChild(li);
     });
 
@@ -230,12 +235,18 @@ function resumenTexto() {
   return "Lista de la compra:\n" + lineas.join("\n");
 }
 
+function listaParaCompartir() {
+  // El enlace siempre se genera "limpio": nadie recibe productos ya tachados,
+  // aunque en este dispositivo sí se vean marcados como comprados.
+  return lista.map(it => ({ ...it, k: false }));
+}
+
 document.getElementById("btn-compartir").addEventListener("click", async () => {
   if (!lista.length) {
     mostrarAviso("Añade algún producto antes de compartir.");
     return;
   }
-  const url = generarEnlace(lista);
+  const url = generarEnlace(listaParaCompartir());
   await compartirEnlace(url, resumenTexto());
 });
 
@@ -244,7 +255,7 @@ document.getElementById("btn-copiar").addEventListener("click", async () => {
     mostrarAviso("Añade algún producto antes de copiar el enlace.");
     return;
   }
-  const url = generarEnlace(lista);
+  const url = generarEnlace(listaParaCompartir());
   try {
     await navigator.clipboard.writeText(url);
     mostrarAviso("Enlace copiado.");
@@ -270,3 +281,4 @@ function mostrarAviso(texto) {
 
 cargarInicial();
 render();
+                                
